@@ -67,7 +67,10 @@ public class MainActivity extends AppCompatActivity {
         btnConvert.setEnabled(false);
         btnPlay.setEnabled(false);
 
-        btnPick.setOnClickListener(v -> filePicker.launch(new String[]{"audio/*"}));
+        // কিছু ডিভাইস/ফাইল ম্যানেজার WAV ফাইলের mime type সঠিকভাবে রিপোর্ট করে না,
+        // ফলে "audio/*" ফিল্টার দিলে সেগুলো তালিকায় দেখা যায় না। তাই "*/*" দিয়ে
+        // সব ফাইল দেখানো হচ্ছে — ইউজার নিজেই সঠিক অডিও ফাইলটি বেছে নেবেন।
+        btnPick.setOnClickListener(v -> filePicker.launch(new String[]{"*/*"}));
         btnConvert.setOnClickListener(v -> startConversion());
         btnPlay.setOnClickListener(v -> playOutput());
     }
@@ -153,10 +156,17 @@ public class MainActivity extends AppCompatActivity {
                         .setSampleRate(44100)
                         .setChannels(2)
                         .start();
-            } catch (Exception e) {
-                Log.e(TAG, "কনভার্সন ব্যর্থ হয়েছে", e);
+            } catch (Throwable t) {
+                // এখানে ইচ্ছাকৃতভাবে Exception এর বদলে Throwable ধরা হচ্ছে।
+                // কারণ, নেটিভ/JNI লাইব্রেরি লোড ব্যর্থ হলে (যেমন UnsatisfiedLinkError,
+                // NoClassDefFoundError) সেগুলো Exception নয়, বরং Error টাইপের —
+                // শুধু "catch (Exception e)" দিয়ে এগুলো ধরা পড়ে না এবং পুরো অ্যাপ
+                // ক্র্যাশ করে। Throwable ধরলে অ্যাপ ক্র্যাশ না করে স্ক্রিনে আসল
+                // কারণটা দেখানো সম্ভব হবে (Logcat-এও পুরো স্ট্যাক-ট্রেস যাবে)।
+                Log.e(TAG, "কনভার্সন ব্যর্থ হয়েছে", t);
                 success = false;
-                errorMessage = e.getMessage();
+                errorMessage = t.getClass().getSimpleName()
+                        + (t.getMessage() != null ? ": " + t.getMessage() : "");
             }
 
             boolean finalSuccess = success;
@@ -188,9 +198,11 @@ public class MainActivity extends AppCompatActivity {
             mediaPlayer.prepare();
             mediaPlayer.start();
             setStatus("আউটপুট ফাইল প্লে হচ্ছে...");
-        } catch (IOException e) {
+        } catch (IOException | IllegalStateException | IllegalArgumentException e) {
+            // MediaPlayer শুধু IOException না, আউটপুট ফাইল করাপ্ট/অসম্পূর্ণ হলে
+            // IllegalStateException বা IllegalArgumentException-ও ছুঁড়তে পারে।
             Log.e(TAG, "প্লে করতে ব্যর্থ", e);
-            Toast.makeText(this, "প্লে করতে সমস্যা হয়েছে", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "প্লে করতে সমস্যা হয়েছে: " + e.getMessage(), Toast.LENGTH_SHORT).show();
         }
     }
 
